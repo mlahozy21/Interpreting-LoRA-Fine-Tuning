@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.venv/
+outputs/
+*.safetensors
+*.bin
+# generated study artifacts (keep figures/ if you want to version the plots)
+results.csv
+# LaTeX aux
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.fls
+paper/*.fdb_latexmk
+.DS_Store

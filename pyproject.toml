@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lora-interp"
+version = "0.1.0"
+description = "Interpretability study of LoRA fine-tuning in LLMs: update-magnitude and representation-drift analyses with rank/module ablations."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Marcos Lahoz" }]
+dependencies = [
+    "torch>=2.2", "transformers>=4.45", "peft>=0.13", "datasets>=3.0",
+    "accelerate>=1.0", "matplotlib>=3.7", "numpy>=1.24",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

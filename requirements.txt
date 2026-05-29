@@ -1,0 +1,8 @@
+torch>=2.2
+transformers>=4.45
+peft>=0.13
+datasets>=3.0
+accelerate>=1.0
+matplotlib>=3.7
+numpy>=1.24
+# On Colab: pip uninstall -y torchao  (old preinstalled version clashes with peft)
