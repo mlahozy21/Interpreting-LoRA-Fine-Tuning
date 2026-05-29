@@ -96,27 +96,63 @@ Representation drift is measured on a fixed set of held-out instructions. All
 code, the ablation runner and the plots are in the repository.
 
 \section{Results}
-\optfig{update_heatmap_r16_all.png}{0.7}{Relative update $\lVert\Delta W\rVert/\lVert W\rVert$ by layer and projection type (rank 16, all modules).}
-\optfig{update_by_layer_r16_all.png}{0.7}{Update magnitude across depth, per projection type.}
-\optfig{drift_r16_all.png}{0.7}{Per-layer representation drift between the adapter-enabled and adapter-disabled model.}
-
-Table~\ref{tab:abl} (produced as \texttt{results.csv}) summarises the ablation:
-the average relative update, its split between attention and MLP projections, the
-mean effective rank of $\Delta W$, and the final-layer representation drift.
+We fine-tune for one epoch on 2{,}000 Alpaca examples per configuration. Training
+converges to a similar loss everywhere (1.39--1.47), with only small gains from
+larger rank or adapting all modules (best: rank~64, all, train loss~1.41),
+already hinting at \emph{diminishing returns}. Table~\ref{tab:abl} and
+Figure~\ref{fig:summary} summarise the diagnostics.
 
 \begin{table}[h]\centering
-\begin{tabular}{llrrrr}
+\begin{tabular}{llrrrrr}
 \toprule
-rank & modules & mean $\rho$ & $\rho$ (attn) & $\rho$ (mlp) & drift (rel.\,$L_2$, final) \\
+rank & modules & mean $\rho$ & $\rho$(attn) & $\rho$(mlp) & eff-rank($\Delta W$) & drift (rel.\,$L_2$) \\
 \midrule
-4  & all & \dots & \dots & \dots & \dots \\
-16 & all & \dots & \dots & \dots & \dots \\
-64 & all & \dots & \dots & \dots & \dots \\
+4  & attn & 0.0063 & 0.0063 & --     & 3.24  & 0.299 \\
+16 & attn & 0.0088 & 0.0088 & --     & 11.77 & 0.320 \\
+64 & attn & 0.0145 & 0.0145 & --     & 44.90 & 0.314 \\
+4  & all  & 0.0039 & 0.0042 & 0.0035 & 3.55  & 0.250 \\
+16 & all  & 0.0063 & 0.0069 & 0.0056 & 13.41 & 0.257 \\
+64 & all  & 0.0117 & 0.0127 & 0.0104 & 52.01 & 0.224 \\
 \bottomrule
 \end{tabular}
-\caption{Ablation summary (fill from \texttt{results.csv} after running).}
+\caption{Ablation summary. $\rho=\lVert\Delta W\rVert/\lVert W\rVert$ averaged over
+adapted modules; eff-rank is the participation ratio of $\Delta W$'s singular
+values; drift is the final-layer relative-$L_2$ representation drift.}
 \label{tab:abl}
 \end{table}
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.95\textwidth]{summary_ablation.png}
+\caption{Left: relative update magnitude grows with rank, and attention
+projections receive larger updates than the MLP. Right: final-layer
+representation drift; adapting all modules moves representations less than
+attention-only at matched rank.}
+\label{fig:summary}
+\end{figure}
+
+Four findings stand out:
+\begin{enumerate}
+  \item \textbf{Updates are tiny in magnitude.} $\rho$ stays around
+        $0.4\%$--$1.5\%$: LoRA makes small, targeted edits to the weights rather
+        than large changes.
+  \item \textbf{LoRA uses (almost) its full rank budget.} The effective rank of
+        $\Delta W$ tracks $r$ closely (3.2 at $r{=}4$, 11.8 at $r{=}16$, $\sim$45--52
+        at $r{=}64$): the adaptation is genuinely high-dimensional, not a rank-1
+        shortcut.
+  \item \textbf{Attention changes more than the MLP.} Under the \textit{all}
+        setting, attention projections consistently receive larger relative
+        updates than the MLP across every rank.
+  \item \textbf{Fine-tuning rescales rather than rotates representations.}
+        Final-layer cosine similarity between the adapter-on and adapter-off model
+        stays high ($0.96$--$0.98$) while the relative-$L_2$ drift is sizeable
+        ($0.22$--$0.32$): the \emph{direction} of the representations is largely
+        preserved, but their \emph{magnitude/offset} moves. Spreading capacity
+        across all modules yields lower per-layer drift than attention-only at the
+        same rank.
+\end{enumerate}
+Together with the near-flat training loss across ranks, this indicates that for
+this model/task a small rank already captures most of the adaptation, and the
+extra capacity of large ranks is only partly used.
 
 \section{Discussion and future work}
 The two diagnostics localise fine-tuning: $\rho$ shows which weights move, the
