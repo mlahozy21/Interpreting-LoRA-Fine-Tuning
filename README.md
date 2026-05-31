@@ -7,7 +7,7 @@ adapter actually changes inside the model. This project fine-tunes `Qwen2.5-1.5B
 with LoRA and then **measures** the change with two training-free, post-hoc
 diagnostics, across an ablation over the LoRA rank and the adapted modules.
 
-A short paper-style write-up is in [`paper/report.pdf`](paper/report.pdf).
+A short report is in [`paper/report.pdf`](paper/report.pdf).
 
 ## Research questions
 
