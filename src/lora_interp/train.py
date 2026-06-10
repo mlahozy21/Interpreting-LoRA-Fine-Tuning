@@ -32,8 +32,9 @@ def _format(ex):
 def train_lora(model_name="Qwen/Qwen2.5-1.5B", rank=16, target="all",
                dataset="tatsu-lab/alpaca", max_samples=2000, epochs=1.0,
                lr=2e-4, batch_size=8, grad_accum=2, max_len=512,
-               output_dir=None, seed=42):
-    """Fine-tune LoRA adapters and return (peft_model, tokenizer)."""
+               output_dir=None, seed=42, use_dora=False):
+    """Fine-tune LoRA (or DoRA, with `use_dora=True`) adapters and return
+    (peft_model, tokenizer)."""
     set_seed(seed)
     model, tok = load_base(model_name)
     model.config.use_cache = False
@@ -41,6 +42,7 @@ def train_lora(model_name="Qwen/Qwen2.5-1.5B", rank=16, target="all",
     lora = LoraConfig(
         r=rank, lora_alpha=2 * rank, lora_dropout=0.05, bias="none",
         task_type="CAUSAL_LM", target_modules=MODULE_SETS[target],
+        use_dora=use_dora,
     )
     model = get_peft_model(model, lora)
     model.print_trainable_parameters()
@@ -61,5 +63,4 @@ def train_lora(model_name="Qwen/Qwen2.5-1.5B", rank=16, target="all",
         report_to="none",
     )
     Trainer(model=model, args=args, train_dataset=ds,
-            data_collator=DataCollatorForLanguageModeling(tok, mlm=False)).train()
-    return model, tok
+            data_collator=

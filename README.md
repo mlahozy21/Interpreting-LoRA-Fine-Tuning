@@ -69,6 +69,17 @@ partly used.
 *Limitations:* single model, single dataset, one epoch — exploratory, not conclusive.
 A second model (and DoRA/other PEFT variants) would be needed to claim generality.
 
+### Extension: generality study (in progress)
+
+`notebooks/extension_dora_second_model.ipynb`
+([Colab](https://colab.research.google.com/github/mlahozy21/Interpreting-LoRA-Fine-Tuning/blob/main/notebooks/extension_dora_second_model.ipynb))
+re-runs the diagnostics on a **second model family** (SmolLM2-1.7B) and a **second
+PEFT variant** (**DoRA**), with two upgrades: *exact* update norms measured by
+merging the adapter and diffing against the base weights (so DoRA's magnitude
+component is included), and a **behavioural validation** — held-out instruction
+loss, base vs fine-tuned — so every configuration is checked to have actually
+adapted before its weights are interpreted.
+
 
 ## Run
 
@@ -85,23 +96,4 @@ python scripts/run_study.py --ranks 4 16 64 --targets attn all # full ablation
 Outputs: per-config figures in `figures/` (update heatmap, update-vs-depth, drift
 curve) and a `results.csv` summary across the ablation.
 
-## Repository layout
-
-```
-.
-├── src/lora_interp/
-│   ├── train.py       # LoRA instruction fine-tuning (returns the in-memory model)
-│   ├── analysis.py    # update-magnitude + representation-drift diagnostics
-│   ├── plots.py       # figures
-│   └── utils.py       # seeding, precision, model loading
-├── scripts/
-│   ├── run_study.py   # rank x module-set ablation -> figures + results.csv
-│   └── quick_demo.py  # single-config end-to-end
-├── notebooks/study.ipynb
-├── paper/report.tex (+ report.pdf)
-└── figures/           # generated plots
-```
-
-## License
-
-Released under the MIT License — see `LICENSE`.
+## R
