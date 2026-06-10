@@ -32,7 +32,8 @@ def _format(ex):
 def train_lora(model_name="Qwen/Qwen2.5-1.5B", rank=16, target="all",
                dataset="tatsu-lab/alpaca", max_samples=2000, epochs=1.0,
                lr=2e-4, batch_size=8, grad_accum=2, max_len=512,
-               output_dir=None, seed=42, use_dora=False):
+               output_dir=None, seed=42, use_dora=False,
+               grad_checkpoint=False):
     """Fine-tune LoRA (or DoRA, with `use_dora=True`) adapters and return
     (peft_model, tokenizer)."""
     set_seed(seed)
@@ -46,6 +47,8 @@ def train_lora(model_name="Qwen/Qwen2.5-1.5B", rank=16, target="all",
     )
     model = get_peft_model(model, lora)
     model.print_trainable_parameters()
+    if grad_checkpoint:
+        model.enable_input_require_grads()
 
     ds = load_dataset(dataset, split="train")
     if max_samples and max_samples < len(ds):
@@ -59,6 +62,8 @@ def train_lora(model_name="Qwen/Qwen2.5-1.5B", rank=16, target="all",
         num_train_epochs=epochs, per_device_train_batch_size=batch_size,
         gradient_accumulation_steps=grad_accum, learning_rate=lr,
         lr_scheduler_type="cosine", warmup_ratio=0.03, logging_steps=25,
+        gradient_checkpointing=grad_checkpoint,
+        gradient_checkpointing_kwargs={"use_reentrant": False} if grad_checkpoint else None,
         save_strategy="no", bf16=use_bf16, fp16=not use_bf16 and torch.cuda.is_available(),
         report_to="none",
     )
