@@ -63,4 +63,5 @@ def train_lora(model_name="Qwen/Qwen2.5-1.5B", rank=16, target="all",
         report_to="none",
     )
     Trainer(model=model, args=args, train_dataset=ds,
-            data_collator=
+            data_collator=DataCollatorForLanguageModeling(tok, mlm=False)).train()
+    return model, tok

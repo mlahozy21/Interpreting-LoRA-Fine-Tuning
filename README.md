@@ -96,4 +96,26 @@ python scripts/run_study.py --ranks 4 16 64 --targets attn all # full ablation
 Outputs: per-config figures in `figures/` (update heatmap, update-vs-depth, drift
 curve) and a `results.csv` summary across the ablation.
 
-## R
+## Repository layout
+
+```
+.
+├── src/lora_interp/
+│   ├── train.py       # LoRA instruction fine-tuning (returns the in-memory model)
+│   ├── analysis.py    # update-magnitude + representation-drift diagnostics
+│   ├── plots.py       # figures
+│   └── utils.py       # seeding, precision, model loading
+├── scripts/
+│   ├── run_study.py   # rank x module-set ablation -> figures + results.csv
+│   └── quick_demo.py  # single-config end-to-end
+├── notebooks/
+│   ├── study.ipynb                       # original study, one click in Colab
+│   └── extension_dora_second_model.ipynb # generality: 2nd model + DoRA + behavioural eval
+├── tests/             # CPU tests of the probes on a synthetic LoRA module (CI)
+├── paper/report.tex (+ report.pdf)
+└── figures/           # generated plots
+```
+
+## License
+
+Released under the MIT License — see `LICENSE`.
