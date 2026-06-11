@@ -1,0 +1,5 @@
+model,variant,rank,target,heldout_loss_base,heldout_loss_ft,mean_rel_update,rel_update_attn,rel_update_mlp,mean_eff_rank,drift_cos_final,drift_relL2_final
+Qwen2.5-1.5B,lora,16,all,1.9758,1.4542,0.0063,0.0068,0.0056,13.4,0.9714,0.2563
+Qwen2.5-1.5B,dora,16,all,1.9758,1.454,0.0062,0.0068,0.0056,13.51,0.9711,0.2592
+SmolLM2-1.7B,lora,16,all,2.2294,1.3742,0.0022,0.0024,0.002,10.16,0.9264,0.377
+SmolLM2-1.7B,dora,16,all,2.2294,1.3709,0.0022,0.0023,0.002,10.21,0.9282,0.3729

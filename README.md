@@ -2,7 +2,7 @@
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mlahozy21/Interpreting-LoRA-Fine-Tuning/blob/main/notebooks/study.ipynb)
 
-> **TL;DR — LoRA makes tiny (≈1%), high-rank, attention-biased edits that *rescale* rather than *rotate* representations.**
+> **TL;DR — LoRA makes tiny (≲1%), high-rank, attention-biased edits that *rescale* rather than *rotate* representations — replicated on a second model family, with DoRA diagnostically indistinguishable from LoRA.**
 
 LoRA is the default way to fine-tune LLMs, yet it is rarely asked **what** a LoRA
 adapter actually changes inside the model. This project fine-tunes `Qwen2.5-1.5B`
@@ -66,19 +66,46 @@ Together with the near-flat training loss, this suggests that for this model/tas
 rank already captures most of the adaptation, and the extra capacity of large ranks is only
 partly used.
 
-*Limitations:* single model, single dataset, one epoch — exploratory, not conclusive.
-A second model (and DoRA/other PEFT variants) would be needed to claim generality.
+*Limitations of the original ablation:* single model, single dataset, one epoch.
+The extension below addresses the model axis directly.
 
-### Extension: generality study (in progress)
+### Extension: does it generalise? (2nd model family + DoRA)
 
 `notebooks/extension_dora_second_model.ipynb`
 ([Colab](https://colab.research.google.com/github/mlahozy21/Interpreting-LoRA-Fine-Tuning/blob/main/notebooks/extension_dora_second_model.ipynb))
-re-runs the diagnostics on a **second model family** (SmolLM2-1.7B) and a **second
-PEFT variant** (**DoRA**), with two upgrades: *exact* update norms measured by
-merging the adapter and diffing against the base weights (so DoRA's magnitude
-component is included), and a **behavioural validation** — held-out instruction
-loss, base vs fine-tuned — so every configuration is checked to have actually
-adapted before its weights are interpreted.
+re-runs the diagnostics on a **second model family** (SmolLM2-1.7B, Llama-style) and a
+**second PEFT variant** (**DoRA**), with two methodological upgrades over the original
+study: *exact* update norms (merge the adapter, diff against the base weights — so
+DoRA's magnitude component is included), and a **behavioural validation** — held-out
+instruction loss, base vs fine-tuned — so every configuration is checked to have
+actually adapted before its weights are interpreted.
+
+Rank 16, all modules, 2,000 Alpaca examples, 1 epoch (`results_extension.csv`):
+
+| model | variant | held-out loss (base → ft) | mean ρ = ‖ΔW‖/‖W‖ | ρ (attn) | ρ (mlp) | e-rank(ΔW) | drift cos | drift rel-L2 |
+|:--|:--|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| Qwen2.5-1.5B | LoRA | 1.976 → 1.454 | 0.0063 | 0.0068 | 0.0056 | 13.4 | 0.971 | 0.256 |
+| Qwen2.5-1.5B | DoRA | 1.976 → 1.454 | 0.0062 | 0.0068 | 0.0056 | 13.5 | 0.971 | 0.259 |
+| SmolLM2-1.7B | LoRA | 2.229 → 1.374 | 0.0022 | 0.0024 | 0.0020 | 10.2 | 0.926 | 0.377 |
+| SmolLM2-1.7B | DoRA | 2.229 → 1.371 | 0.0022 | 0.0023 | 0.0020 | 10.2 | 0.928 | 0.373 |
+
+Every configuration adapts behaviourally (held-out loss drops ~0.5–0.9 nats), so the
+weight-space diagnostics are interpreting *successful* fine-tuning runs. The four
+original findings replicate on the second model family:
+
+1. **Tiny updates** — mean ρ stays ≤ 0.6% (SmolLM2 even smaller, ~0.2%).
+2. **High effective rank** — e-rank(ΔW) ≈ 13.4/16 on Qwen and ≈ 10.2/16 on SmolLM2:
+   most of the rank budget is used, with a model-dependent degree.
+3. **Attention bias** — ρ(attn) > ρ(mlp) in all four configurations.
+4. **Rescale, not rotate** — final-layer cosine stays high (0.97 / 0.93) with sizeable
+   relative-L2 drift (0.26 / 0.38); SmolLM2 moves direction somewhat more than Qwen.
+
+**New finding:** at this scale and task, **DoRA is diagnostically indistinguishable
+from LoRA** — exact update magnitude, effective rank, attention bias and drift all
+match within noise, even though DoRA explicitly decomposes the update into magnitude
+and direction. The decomposition does not change *what* the fine-tuning learns here.
+
+*Remaining limitations:* one dataset, one epoch, rank 16 only in the extension.
 
 
 ## Run
@@ -113,6 +140,7 @@ curve) and a `results.csv` summary across the ablation.
 │   └── extension_dora_second_model.ipynb # generality: 2nd model + DoRA + behavioural eval
 ├── tests/             # CPU tests of the probes on a synthetic LoRA module (CI)
 ├── paper/report.tex (+ report.pdf)
+├── results_extension.csv  # generality study (2 models x LoRA/DoRA)
 └── figures/           # generated plots
 ```
 
