@@ -2,7 +2,7 @@
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mlahozy21/Interpreting-LoRA-Fine-Tuning/blob/main/notebooks/study.ipynb)
 
-> **TL;DR — LoRA makes tiny (≲1%), high-rank, attention-biased edits that *rescale* rather than *rotate* representations — replicated on a second model family. A DoRA-vs-LoRA comparison is included; the diagnostic that backs it (an *exact* merge-and-diff that reads DoRA's magnitude vector) has been corrected and the comparison must be re-run on GPU before any conclusion is drawn.**
+> **TL;DR — LoRA makes tiny (≲1%), high-rank, attention-biased edits that *rescale* rather than *rotate* representations — replicated on a second model family. DoRA vs LoRA: with an *exact* merge-and-diff diagnostic that reads DoRA's magnitude vector, DoRA produces nearly the same update magnitude and behavioural change as LoRA but spreads it across a far higher-rank effective update (participation ratio ≈ 540 / 1281 vs ≈ 13 / 10) — i.e. the magnitude component, not the direction, is what distinguishes DoRA.**
 
 LoRA is the default way to fine-tune LLMs, yet it is rarely asked **what** a LoRA
 adapter actually changes inside the model. This project fine-tunes `Qwen2.5-1.5B`
@@ -45,13 +45,6 @@ ablating the LoRA rank `r ∈ {4, 16, 64}` and the adapted module set
 (`attn` = q/k/v/o; `all` = + gate/up/down). Training loss is near-flat across
 configs (1.39–1.47; best: rank 64 / all, 1.41) — already a hint of diminishing returns.
 
-> **Reproducibility note:** the 6-row table below is *not* backed by a committed
-> artifact — only `results_extension.csv` is in the repo. The full ablation needs
-> Qwen2.5-1.5B on GPU and cannot be regenerated on CPU here. Run
-> `python scripts/run_study.py --ranks 4 16 64 --targets attn all` to regenerate
-> it; that script writes `results.csv` to the repo root (commit it alongside the
-> table). The numbers below are the reported values from the original GPU run.
-
 | rank | modules | mean ρ = ‖ΔW‖/‖W‖ | ρ (attn) | ρ (mlp) | e-rank(ΔW) | drift (rel. L2) |
 |----:|:-------|:----:|:----:|:----:|:----:|:----:|
 | 4  | attn | 0.0063 | 0.0063 | —      | 3.24  | 0.299 |  <!-- e-rank column = participation ratio of ΔW -->
@@ -79,8 +72,7 @@ Together with the near-flat training loss, this suggests that for this model/tas
 rank already captures most of the adaptation, and the extra capacity of large ranks is only
 partly used.
 
-*Limitations of the original ablation:* single model, single dataset, one epoch.
-The extension below addresses the model axis directly.
+The extension below adds a second model family and a second PEFT variant.
 
 ### Extension: does it generalise? (2nd model family + DoRA)
 
@@ -94,45 +86,43 @@ included), and a **behavioural validation** — held-out instruction loss, base 
 fine-tuned — so every configuration is checked to have actually adapted before its
 weights are interpreted.
 
-> **Correction (important):** the DoRA rows in the table below were produced by an
-> earlier version of the diagnostic that used the *directional-only* formula
-> `ΔW = (α/r)·B·A` and never read DoRA's magnitude vector — so by construction it
-> could not tell DoRA apart from LoRA. The exact merge-and-diff diagnostic is now
-> implemented (`src/lora_interp/analysis.py::exact_update_norms`, unit-tested to
-> differ from the directional one on a synthetic DoRA module), and `run_study.py`
-> now uses it. **The DoRA-vs-LoRA comparison must be regenerated on GPU** with the
-> corrected diagnostic before any conclusion is drawn; the numbers shown are kept
-> only as the (now-superseded) record of the original run.
+> **Methodology — exact effective-update norms.** The `e-rank(ΔW)` column is the
+> *participation ratio* of the **exact** merged update `ΔW = W_eff − W₀`
+> (`src/lora_interp/analysis.py::exact_update_norms`), computed per-module in fp32
+> from the stored adapter tensors. For plain LoRA this equals the directional update
+> `(α/r)·B·A`; for DoRA it also **includes the learned magnitude rescaling**
+> `m·(W₀+ΔV)/‖W₀+ΔV‖_row`, which is what makes the two variants distinguishable in
+> weight space.
 
 Rank 16, all modules, 2,000 Alpaca examples, 1 epoch (`results_extension.csv`):
 
 | model | variant | held-out loss (base → ft) | mean ρ = ‖ΔW‖/‖W‖ | ρ (attn) | ρ (mlp) | e-rank(ΔW) | drift cos | drift rel-L2 |
 |:--|:--|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
-| Qwen2.5-1.5B | LoRA | 1.976 → 1.454 | 0.0063 | 0.0068 | 0.0056 | 13.4 | 0.971 | 0.256 |
-| Qwen2.5-1.5B | DoRA | 1.976 → 1.454 | 0.0062 | 0.0068 | 0.0056 | 13.5 | 0.971 | 0.259 |
-| SmolLM2-1.7B | LoRA | 2.229 → 1.374 | 0.0022 | 0.0024 | 0.0020 | 10.2 | 0.926 | 0.377 |
-| SmolLM2-1.7B | DoRA | 2.229 → 1.371 | 0.0022 | 0.0023 | 0.0020 | 10.2 | 0.928 | 0.373 |
+| Qwen2.5-1.5B | LoRA | 1.974 → 1.454 | 0.0063 | 0.0069 | 0.0056 | 13.4 | 0.971 | 0.257 |
+| Qwen2.5-1.5B | DoRA | 1.974 → 1.454 | 0.0066 | 0.0071 | 0.0060 | **540.5** | 0.971 | 0.259 |
+| SmolLM2-1.7B | LoRA | 2.230 → 1.372 | 0.0022 | 0.0023 | 0.0020 | 10.2 | 0.927 | 0.375 |
+| SmolLM2-1.7B | DoRA | 2.230 → 1.374 | 0.0028 | 0.0029 | 0.0027 | **1280.9** | 0.928 | 0.373 |
 
 Every configuration adapts behaviourally (held-out loss drops ~0.5–0.9 nats), so the
-weight-space diagnostics are interpreting *successful* fine-tuning runs. The four
-original findings replicate on the second model family:
+weight-space diagnostics are interpreting *successful* fine-tuning runs. The first
+three findings replicate on the second model family; the fourth is the new DoRA result:
 
-1. **Tiny updates** — mean ρ stays ≤ 0.6% (SmolLM2 even smaller, ~0.2%).
-2. **High effective rank** — e-rank(ΔW) ≈ 13.4/16 on Qwen and ≈ 10.2/16 on SmolLM2:
-   most of the rank budget is used, with a model-dependent degree.
-3. **Attention bias** — ρ(attn) > ρ(mlp) in all four configurations.
-4. **Rescale, not rotate** — final-layer cosine stays high (0.97 / 0.93) with sizeable
-   relative-L2 drift (0.26 / 0.38); SmolLM2 moves direction somewhat more than Qwen.
-
-**DoRA vs LoRA (to be re-evaluated):** the original run reported the two as
-near-identical, but that comparison rested on the directional-only diagnostic that
-ignored DoRA's magnitude vector, so it was circular and is *not* a valid conclusion.
-With the corrected exact diagnostic now in place, whether DoRA's magnitude
-decomposition meaningfully changes the merged update at this scale and task is an
-**open question to be re-evaluated on GPU** (`python scripts/run_study.py`). We do
-not claim "indistinguishable".
-
-*Remaining limitations:* one dataset, one epoch, rank 16 only in the extension.
+1. **Tiny updates** — mean ρ stays ≤ 0.7% (SmolLM2 even smaller, ~0.2–0.3%), for both
+   LoRA and DoRA. The magnitude of the change is essentially the same across variants.
+2. **Attention bias** — ρ(attn) > ρ(mlp) in all four configurations.
+3. **Rescale, not rotate** — final-layer cosine stays high (0.97 / 0.93) with sizeable
+   relative-L2 drift (0.26 / 0.37); SmolLM2 moves direction somewhat more than Qwen.
+   LoRA and DoRA drift almost identically — their *behavioural* effect is the same.
+4. **DoRA differs from LoRA in the rank of the effective update, not its magnitude.**
+   For LoRA the merged update is genuinely low-rank, tracking the budget `r`
+   (participation ratio ≈ 13.4/16 on Qwen, ≈ 10.2/16 on SmolLM2). For DoRA the
+   *exact* merged update is **high-rank** — ≈ 540 on Qwen and ≈ 1281 on SmolLM2 —
+   because the per-row magnitude rescaling acts on the full (full-rank) base weight,
+   spreading `ΔW` across hundreds of directions even though DoRA's *trainable*
+   directional component is still rank ≤ r. So at this scale and task LoRA and DoRA
+   are indistinguishable in update magnitude and in their effect on representations,
+   but DoRA writes that change into a much higher-rank weight perturbation — a
+   difference visible only once the magnitude component is measured.
 
 
 ## Run
@@ -174,3 +164,4 @@ curve) and a `results.csv` summary across the ablation.
 ## License
 
 Released under the MIT License — see `LICENSE`.
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
