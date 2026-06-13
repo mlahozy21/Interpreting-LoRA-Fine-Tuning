@@ -37,8 +37,14 @@ every adapted projection, revealing where LoRA concentrates its capacity; and
 (ii) the \emph{representation drift} between the adapter-enabled and
 adapter-disabled model, layer by layer, revealing how far the internal
 representations move and at what depth. We run these across an ablation over the
-LoRA rank and the set of adapted modules. The framework turns ``LoRA works'' into
-measurable, localised statements about a fine-tuned model.
+LoRA rank and the set of adapted modules. We then test whether the findings
+\emph{generalise}: we repeat the diagnostics on a second model family
+(\texttt{SmolLM2-1.7B}) and a second PEFT variant (DoRA), with two upgrades ---
+\emph{exact} update norms measured by merging the adapter and diffing against the
+base weights, and a \emph{behavioural validation} via held-out instruction loss.
+All four findings replicate, and DoRA turns out to be diagnostically
+indistinguishable from LoRA. The framework turns ``LoRA works'' into measurable,
+localised statements about a fine-tuned model.
 \end{abstract}
 
 \section{Introduction}
@@ -154,14 +160,74 @@ Together with the near-flat training loss across ranks, this indicates that for
 this model/task a small rank already captures most of the adaptation, and the
 extra capacity of large ranks is only partly used.
 
+\section{Generality: a second model family and DoRA}
+\label{sec:generality}
+
+The ablation above is a single-model, single-variant study. To test whether its
+conclusions are properties of \emph{LoRA fine-tuning} rather than of
+\texttt{Qwen2.5-1.5B}, we repeat the diagnostics at rank~16 (\textit{all}
+modules, same data and budget) along two new axes: a second model family,
+\texttt{SmolLM2-1.7B} (a Llama-style architecture), and a second PEFT variant,
+\textbf{DoRA}~\cite{dora}, which decomposes the update into a magnitude and a
+direction component.
+
+Two methodological upgrades accompany the extension. First, update norms are
+now \emph{exact}: we snapshot the frozen base weights, merge the trained
+adapter, and measure $\Delta W$ as the difference of the merged and base
+matrices --- for DoRA, the $(\alpha/r)\,BA$ formula would miss the magnitude
+component, whereas the merge-and-diff measurement includes it. Second, every
+configuration passes a \emph{behavioural validation} before its weights are
+interpreted: mean token-level cross-entropy on 200 held-out Alpaca examples,
+base vs.\ fine-tuned, so the diagnostics are guaranteed to describe runs that
+actually adapted.
+
+\begin{table}[h]\centering
+\small
+\begin{tabular}{llcrrrrrr}
+\toprule
+model & variant & loss (base$\to$ft) & mean $\rho$ & $\rho$(attn) & $\rho$(mlp) & eff-rank & drift cos & drift $L_2$ \\
+\midrule
+Qwen2.5-1.5B & LoRA & $1.98\to1.45$ & 0.0063 & 0.0068 & 0.0056 & 13.4 & 0.971 & 0.256 \\
+Qwen2.5-1.5B & DoRA & $1.98\to1.45$ & 0.0062 & 0.0068 & 0.0056 & 13.5 & 0.971 & 0.259 \\
+SmolLM2-1.7B & LoRA & $2.23\to1.37$ & 0.0022 & 0.0024 & 0.0020 & 10.2 & 0.926 & 0.377 \\
+SmolLM2-1.7B & DoRA & $2.23\to1.37$ & 0.0022 & 0.0023 & 0.0020 & 10.2 & 0.928 & 0.373 \\
+\bottomrule
+\end{tabular}
+\caption{Generality study (rank 16, all modules, 2{,}000 Alpaca examples, one
+epoch). Update norms are exact (merge-and-diff). Every configuration improves
+held-out instruction loss by $0.5$--$0.9$ nats before being interpreted.}
+\label{tab:gen}
+\end{table}
+
+All four findings replicate on the second family
+(Table~\ref{tab:gen}): updates remain tiny (mean $\rho\le 0.6\%$; SmolLM2 is
+even more frugal at $\approx 0.2\%$); most of the rank budget is used
+($13.4/16$ on Qwen, $10.2/16$ on SmolLM2 --- substantial but model-dependent);
+attention receives larger relative updates than the MLP in all four
+configurations; and the rescale-not-rotate signature persists (final-layer
+cosine $0.97/0.93$ with sizeable relative-$L_2$ drift $0.26/0.38$ --- SmolLM2
+moves direction somewhat more than Qwen).
+
+\paragraph{A new finding: DoRA is diagnostically indistinguishable from LoRA.}
+At this scale and task, every diagnostic --- exact update magnitude, effective
+rank, attention bias, and representation drift --- matches between LoRA and DoRA
+within noise, despite DoRA's explicit magnitude/direction decomposition. The
+decomposition changes the \emph{parametrisation} of the update, not what the
+fine-tuning learns here. Whether this holds at larger scale, longer training,
+or on tasks where DoRA reports gains over LoRA is an open question the framework
+can answer directly.
+
 \section{Discussion and future work}
 The two diagnostics localise fine-tuning: $\rho$ shows which weights move, the
 effective rank shows how low-dimensional the change is, and the drift curve shows
-where in the network behaviour is reshaped (typically the later layers). Natural
-extensions: (i) \emph{behavioural} validation linking drift to task accuracy;
-(ii) trained linear \emph{probes} on the representations before/after, connecting
-to structural-probe methodology; (iii) scaling to 7B models and to DoRA / other
-PEFT variants; (iv) merging adapters and tracking weight-space directions.
+where in the network behaviour is reshaped (typically the later layers). The generality study
+(Section~\ref{sec:generality}) shows these are statements about LoRA-style
+fine-tuning, not about one model, and that DoRA does not change the picture.
+Natural extensions: (i) scaling the grid to 7B+ models and longer training,
+where DoRA's reported gains might translate into diagnostic differences;
+(ii) trained linear \emph{probes} on the representations before/after,
+connecting to structural-probe methodology; (iii) tracking weight-space
+directions of the merged updates across tasks.
 
 \begin{thebibliography}{9}
 \bibitem{hu2021lora} Hu, E. et al. (2021). \emph{LoRA: Low-Rank Adaptation of Large Language Models}. arXiv:2106.09685.

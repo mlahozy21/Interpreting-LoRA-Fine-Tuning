@@ -2,7 +2,7 @@
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mlahozy21/Interpreting-LoRA-Fine-Tuning/blob/main/notebooks/study.ipynb)
 
-> **TL;DR — LoRA makes tiny (≲1%), high-rank, attention-biased edits that *rescale* rather than *rotate* representations — replicated on a second model family, with DoRA diagnostically indistinguishable from LoRA.**
+> **TL;DR — LoRA makes tiny (≲1%), high-rank, attention-biased edits that *rescale* rather than *rotate* representations — replicated on a second model family. A DoRA-vs-LoRA comparison is included; the diagnostic that backs it (an *exact* merge-and-diff that reads DoRA's magnitude vector) has been corrected and the comparison must be re-run on GPU before any conclusion is drawn.**
 
 LoRA is the default way to fine-tune LLMs, yet it is rarely asked **what** a LoRA
 adapter actually changes inside the model. This project fine-tunes `Qwen2.5-1.5B`
@@ -21,10 +21,16 @@ A short report is in [`paper/report.pdf`](paper/report.pdf).
 
 ## The two diagnostics
 
-- **Effective update magnitude** — for every adapted weight `W`, form the explicit
-  update `ΔW = (α/r)·B·A` and report the relative Frobenius norm `‖ΔW‖/‖W‖`
-  (how much it changes) and the **effective rank** of `ΔW` (how many directions it
-  uses). → *where* the capacity goes.
+- **Effective update magnitude** — for every adapted weight `W`, form the
+  effective update `ΔW` and report the relative Frobenius norm `‖ΔW‖/‖W‖` (how
+  much it changes) and the **participation ratio** of `ΔW` (a soft count of how
+  many singular directions it uses; *not* the matrix rank — see the docstring of
+  `participation_ratio`). Two estimators are provided: `adapter_update_norms`
+  computes the *directional* update `ΔV = (α/r)·B·A` (exact for plain LoRA), and
+  `exact_update_norms` computes the *exact* merged update `ΔW = W_eff − W₀`
+  per-module in fp32 — for DoRA this includes the learned magnitude rescaling, so
+  it is the estimator that can actually distinguish DoRA from LoRA. → *where* the
+  capacity goes.
 - **Representation drift** — run held-out text through the model with the adapter
   **on** vs **off** and compare the hidden states layer by layer (cosine similarity
   and relative L2). → *how much* and *where* behaviour is reshaped.
@@ -39,9 +45,16 @@ ablating the LoRA rank `r ∈ {4, 16, 64}` and the adapted module set
 (`attn` = q/k/v/o; `all` = + gate/up/down). Training loss is near-flat across
 configs (1.39–1.47; best: rank 64 / all, 1.41) — already a hint of diminishing returns.
 
+> **Reproducibility note:** the 6-row table below is *not* backed by a committed
+> artifact — only `results_extension.csv` is in the repo. The full ablation needs
+> Qwen2.5-1.5B on GPU and cannot be regenerated on CPU here. Run
+> `python scripts/run_study.py --ranks 4 16 64 --targets attn all` to regenerate
+> it; that script writes `results.csv` to the repo root (commit it alongside the
+> table). The numbers below are the reported values from the original GPU run.
+
 | rank | modules | mean ρ = ‖ΔW‖/‖W‖ | ρ (attn) | ρ (mlp) | e-rank(ΔW) | drift (rel. L2) |
 |----:|:-------|:----:|:----:|:----:|:----:|:----:|
-| 4  | attn | 0.0063 | 0.0063 | —      | 3.24  | 0.299 |
+| 4  | attn | 0.0063 | 0.0063 | —      | 3.24  | 0.299 |  <!-- e-rank column = participation ratio of ΔW -->
 | 16 | attn | 0.0088 | 0.0088 | —      | 11.77 | 0.320 |
 | 64 | attn | 0.0145 | 0.0145 | —      | 44.90 | 0.314 |
 | 4  | all  | 0.0039 | 0.0042 | 0.0035 | 3.55  | 0.250 |
@@ -75,10 +88,21 @@ The extension below addresses the model axis directly.
 ([Colab](https://colab.research.google.com/github/mlahozy21/Interpreting-LoRA-Fine-Tuning/blob/main/notebooks/extension_dora_second_model.ipynb))
 re-runs the diagnostics on a **second model family** (SmolLM2-1.7B, Llama-style) and a
 **second PEFT variant** (**DoRA**), with two methodological upgrades over the original
-study: *exact* update norms (merge the adapter, diff against the base weights — so
-DoRA's magnitude component is included), and a **behavioural validation** — held-out
-instruction loss, base vs fine-tuned — so every configuration is checked to have
-actually adapted before its weights are interpreted.
+study: *exact* update norms (`exact_update_norms`: per-module `ΔW = W_eff − W₀` in
+fp32, reading DoRA's magnitude vector so its magnitude component is actually
+included), and a **behavioural validation** — held-out instruction loss, base vs
+fine-tuned — so every configuration is checked to have actually adapted before its
+weights are interpreted.
+
+> **Correction (important):** the DoRA rows in the table below were produced by an
+> earlier version of the diagnostic that used the *directional-only* formula
+> `ΔW = (α/r)·B·A` and never read DoRA's magnitude vector — so by construction it
+> could not tell DoRA apart from LoRA. The exact merge-and-diff diagnostic is now
+> implemented (`src/lora_interp/analysis.py::exact_update_norms`, unit-tested to
+> differ from the directional one on a synthetic DoRA module), and `run_study.py`
+> now uses it. **The DoRA-vs-LoRA comparison must be regenerated on GPU** with the
+> corrected diagnostic before any conclusion is drawn; the numbers shown are kept
+> only as the (now-superseded) record of the original run.
 
 Rank 16, all modules, 2,000 Alpaca examples, 1 epoch (`results_extension.csv`):
 
@@ -100,10 +124,13 @@ original findings replicate on the second model family:
 4. **Rescale, not rotate** — final-layer cosine stays high (0.97 / 0.93) with sizeable
    relative-L2 drift (0.26 / 0.38); SmolLM2 moves direction somewhat more than Qwen.
 
-**New finding:** at this scale and task, **DoRA is diagnostically indistinguishable
-from LoRA** — exact update magnitude, effective rank, attention bias and drift all
-match within noise, even though DoRA explicitly decomposes the update into magnitude
-and direction. The decomposition does not change *what* the fine-tuning learns here.
+**DoRA vs LoRA (to be re-evaluated):** the original run reported the two as
+near-identical, but that comparison rested on the directional-only diagnostic that
+ignored DoRA's magnitude vector, so it was circular and is *not* a valid conclusion.
+With the corrected exact diagnostic now in place, whether DoRA's magnitude
+decomposition meaningfully changes the merged update at this scale and task is an
+**open question to be re-evaluated on GPU** (`python scripts/run_study.py`). We do
+not claim "indistinguishable".
 
 *Remaining limitations:* one dataset, one epoch, rank 16 only in the extension.
 

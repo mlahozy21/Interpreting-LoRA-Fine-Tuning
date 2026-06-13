@@ -17,7 +17,7 @@ import os
 
 import torch
 
-from lora_interp.analysis import adapter_update_norms, representation_drift
+from lora_interp.analysis import exact_update_norms, representation_drift
 from lora_interp.plots import plot_drift, plot_update_by_layer, plot_update_heatmap
 from lora_interp.train import train_lora
 
@@ -54,7 +54,9 @@ def main():
                                     max_samples=args.max_samples, epochs=args.epochs,
                                     output_dir=f"outputs/{tag}")
 
-            rows = adapter_update_norms(model)
+            # Exact effective-update norms (includes DoRA's magnitude component
+            # when present; identical to the directional norms for plain LoRA).
+            rows = exact_update_norms(model)
             plot_update_heatmap(rows, f"{args.fig_dir}/update_heatmap_{tag}.png",
                                 title=f"||dW||/||W||  (rank={rank}, {target})")
             plot_update_by_layer(rows, f"{args.fig_dir}/update_by_layer_{tag}.png",
@@ -86,10 +88,4 @@ def main():
     with open(args.results, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(summary[0].keys()))
         w.writeheader(); w.writerows(summary)
-    print(f"\nSummary written to {args.results} and figures to {args.fig_dir}/")
-    for s in summary:
-        print(s)
-
-
-if __name__ == "__main__":
-    main()
+    
