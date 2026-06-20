@@ -14,5 +14,4 @@ paper/*.log
 paper/*.out
 paper/*.fls
 paper/*.fdb_latexmk
-.DS_Store
-*.tmp
+paper/*.synctex.

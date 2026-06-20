@@ -42,9 +42,14 @@ LoRA rank and the set of adapted modules. We then test whether the findings
 (\texttt{SmolLM2-1.7B}) and a second PEFT variant (DoRA), with two upgrades ---
 \emph{exact} update norms measured by merging the adapter and diffing against the
 base weights, and a \emph{behavioural validation} via held-out instruction loss.
-All four findings replicate, and DoRA turns out to be diagnostically
-indistinguishable from LoRA. The framework turns ``LoRA works'' into measurable,
-localised statements about a fine-tuned model.
+The first three findings replicate. The fourth becomes a sharper, DoRA-specific
+result: reading DoRA's learned magnitude vector into the exact update shows that
+DoRA matches LoRA in update \emph{magnitude} and in its effect on representations,
+yet writes that change into a far \emph{higher-rank} weight perturbation
+(participation ratio $\approx 540$/$1281$ vs.\ $\approx 13$/$10$ for LoRA). The
+magnitude component, not the direction, is what distinguishes DoRA in weight
+space. The framework turns ``LoRA works'' into measurable, localised statements
+about a fine-tuned model.
 \end{abstract}
 
 \section{Introduction}
@@ -79,7 +84,10 @@ $\{\sigma_i\}$,
   \text{eff-rank}(\Delta W) \;=\; \exp\!\Big(-\sum_i p_i\log p_i\Big),\qquad
   p_i=\frac{\sigma_i}{\sum_j\sigma_j},
 \]
-which measures how many directions the update effectively uses (bounded by $r$).
+which measures how many directions the update effectively uses. For a low-rank
+$\Delta W=\tfrac{\alpha}{r}BA$ this is bounded by $r$; for the \emph{exact} merged
+update of DoRA (\S\ref{sec:generality}) it need not be, since the magnitude
+rescaling acts on the full-rank base weight.
 
 \paragraph{(2) Representation drift.} Let $h^{(\ell)}_{\text{on}}(x)$ and
 $h^{(\ell)}_{\text{off}}(x)$ be the mean-pooled hidden state at layer $\ell$ for
@@ -187,42 +195,55 @@ actually adapted.
 \toprule
 model & variant & loss (base$\to$ft) & mean $\rho$ & $\rho$(attn) & $\rho$(mlp) & eff-rank & drift cos & drift $L_2$ \\
 \midrule
-Qwen2.5-1.5B & LoRA & $1.98\to1.45$ & 0.0063 & 0.0068 & 0.0056 & 13.4 & 0.971 & 0.256 \\
-Qwen2.5-1.5B & DoRA & $1.98\to1.45$ & 0.0062 & 0.0068 & 0.0056 & 13.5 & 0.971 & 0.259 \\
-SmolLM2-1.7B & LoRA & $2.23\to1.37$ & 0.0022 & 0.0024 & 0.0020 & 10.2 & 0.926 & 0.377 \\
-SmolLM2-1.7B & DoRA & $2.23\to1.37$ & 0.0022 & 0.0023 & 0.0020 & 10.2 & 0.928 & 0.373 \\
+Qwen2.5-1.5B & LoRA & $1.97\to1.45$ & 0.0063 & 0.0069 & 0.0056 & 13.4 & 0.971 & 0.257 \\
+Qwen2.5-1.5B & DoRA & $1.97\to1.45$ & 0.0066 & 0.0071 & 0.0060 & \textbf{540.5} & 0.971 & 0.259 \\
+SmolLM2-1.7B & LoRA & $2.23\to1.37$ & 0.0022 & 0.0023 & 0.0020 & 10.2 & 0.927 & 0.375 \\
+SmolLM2-1.7B & DoRA & $2.23\to1.37$ & 0.0028 & 0.0029 & 0.0027 & \textbf{1280.9} & 0.928 & 0.373 \\
 \bottomrule
 \end{tabular}
 \caption{Generality study (rank 16, all modules, 2{,}000 Alpaca examples, one
-epoch). Update norms are exact (merge-and-diff). Every configuration improves
-held-out instruction loss by $0.5$--$0.9$ nats before being interpreted.}
+epoch). Update norms are exact (merge-and-diff), reading DoRA's learned magnitude
+vector so its magnitude component is included in $\Delta W$. Every configuration
+improves held-out instruction loss by $0.5$--$0.9$ nats before being interpreted.}
 \label{tab:gen}
 \end{table}
 
-All four findings replicate on the second family
-(Table~\ref{tab:gen}): updates remain tiny (mean $\rho\le 0.6\%$; SmolLM2 is
-even more frugal at $\approx 0.2\%$); most of the rank budget is used
-($13.4/16$ on Qwen, $10.2/16$ on SmolLM2 --- substantial but model-dependent);
-attention receives larger relative updates than the MLP in all four
-configurations; and the rescale-not-rotate signature persists (final-layer
-cosine $0.97/0.93$ with sizeable relative-$L_2$ drift $0.26/0.38$ --- SmolLM2
-moves direction somewhat more than Qwen).
+The first three findings replicate on the second family
+(Table~\ref{tab:gen}): updates remain tiny (mean $\rho\le 0.7\%$ for both LoRA
+and DoRA; SmolLM2 is even more frugal at $\approx 0.2$--$0.3\%$); for LoRA most
+of the rank budget is used ($13.4/16$ on Qwen, $10.2/16$ on SmolLM2 ---
+substantial but model-dependent); attention receives larger relative updates
+than the MLP in all four configurations; and the rescale-not-rotate signature
+persists (final-layer cosine $0.97/0.93$ with sizeable relative-$L_2$ drift
+$0.26/0.37$ --- SmolLM2 moves direction somewhat more than Qwen). LoRA and DoRA
+drift almost identically: their \emph{behavioural} effect is the same.
 
-\paragraph{A new finding: DoRA is diagnostically indistinguishable from LoRA.}
-At this scale and task, every diagnostic --- exact update magnitude, effective
-rank, attention bias, and representation drift --- matches between LoRA and DoRA
-within noise, despite DoRA's explicit magnitude/direction decomposition. The
-decomposition changes the \emph{parametrisation} of the update, not what the
-fine-tuning learns here. Whether this holds at larger scale, longer training,
-or on tasks where DoRA reports gains over LoRA is an open question the framework
-can answer directly.
+\paragraph{A new finding: DoRA differs from LoRA in the rank of the update, not
+its magnitude.} Update magnitude, attention bias and representation drift all
+match between LoRA and DoRA within noise --- but the \emph{effective rank} of the
+merged update does not. For LoRA the exact $\Delta W$ is genuinely low-rank,
+tracking the budget $r$ (participation ratio $13.4$ on Qwen, $10.2$ on SmolLM2).
+For DoRA the exact $\Delta W$ is \emph{high-rank} --- $\approx 540$ on Qwen and
+$\approx 1281$ on SmolLM2 --- because the per-row magnitude rescaling
+$m\cdot(W_0+\Delta V)/\lVert W_0+\Delta V\rVert_{\text{row}}$ acts on the
+full-rank base weight, spreading $\Delta W$ across hundreds of directions even
+though DoRA's \emph{trainable} directional component is still rank $\le r$. This
+difference is invisible to the directional $(\alpha/r)\,BA$ estimator and appears
+only once the magnitude component is measured. So at this scale and task LoRA and
+DoRA are indistinguishable in update magnitude and in their effect on
+representations, yet DoRA writes that same change into a much higher-rank weight
+perturbation. Whether this higher-rank footprint translates into a behavioural
+advantage at larger scale or on tasks where DoRA reports gains is an open
+question the framework can answer directly.
 
 \section{Discussion and future work}
 The two diagnostics localise fine-tuning: $\rho$ shows which weights move, the
 effective rank shows how low-dimensional the change is, and the drift curve shows
 where in the network behaviour is reshaped (typically the later layers). The generality study
 (Section~\ref{sec:generality}) shows these are statements about LoRA-style
-fine-tuning, not about one model, and that DoRA does not change the picture.
+fine-tuning, not about one model, and that DoRA leaves update magnitude and
+representation drift unchanged while writing a far higher-rank weight
+perturbation --- a difference only the exact, magnitude-aware diagnostic reveals.
 Natural extensions: (i) scaling the grid to 7B+ models and longer training,
 where DoRA's reported gains might translate into diagnostic differences;
 (ii) trained linear \emph{probes} on the representations before/after,

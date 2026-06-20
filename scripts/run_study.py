@@ -88,4 +88,10 @@ def main():
     with open(args.results, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(summary[0].keys()))
         w.writeheader(); w.writerows(summary)
-    
+    print(f"\nSummary written to {args.results} and figures to {args.fig_dir}/")
+    for s in summary:
+        print(s)
+
+
+if __name__ == "__main__":
+    main()
